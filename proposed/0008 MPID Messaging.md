@@ -200,6 +200,8 @@ Such a separate routing object is not required if the "pull" model is used.  Thi
     c, Delete Message
     d, address relocation (if allows client using fixed mpid address connecting network)
         not required if 1.h is implemented
+    e, address registration
+        not required if address relocation is used
 ```
 
 # Drawbacks
@@ -217,7 +219,7 @@ We also have identified a need for some form of secure messaging in order to imp
 # Unresolved questions
 
 1. It needs to be mentioned that to figure out the recipient, a `sign::verify` call is required each time.  The efficiency can be improved by having an explicit `recipient` member data in the MpidMessage struct, however this will be in the spacial and bandwidth cost in storage and messaging among nodes.
-1.
+1. When `PULL` model is to be used, `address registration` or `address relocation` procedure is not required any more as `MpidManager` is always responding to requests from mpid_client directly.
 
 
 # Future Work
