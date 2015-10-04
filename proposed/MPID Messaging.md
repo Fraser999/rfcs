@@ -217,7 +217,8 @@ enum MpidMessageWrapper {
     PutHeader(MpidHeader),
     /// List of headers to check for continued existence of corresponding messages in Sender's outbox
     OutboxHas(Vec<mpid_header.name()>),
-    /// Subset of list from Has request which still exist in Sender's outbox, all existing headers in inbox to respons GetAll
+    /// All existing headers (or headers of existing messages) in inbox (or outbox) to respond a Get request targeting an account
+    /// Or a subset of list from OutboxHas request which still exist in Sender's outbox, 
     HasResponse(Vec<MpidHeader>),
 }
 ```
