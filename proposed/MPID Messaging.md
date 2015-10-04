@@ -70,12 +70,12 @@ The `metadata` field allows passing arbitrary user/app data.  It must not exceed
 ### `MpidMessage`
 
 ```rust
-pub struct MpidMessage {
-    header: ::MpidHeader,
-    recipient: ::NameType,
-    body: Vec<u8>,
-    recipient_and_body_signature: ::sodiumoxide::crypto::sign::Signature,
-}
+  pub struct MpidMessage {
+      header: ::MpidHeader,
+      recipient: ::NameType,
+      body: Vec<u8>,
+      recipient_and_body_signature: ::sodiumoxide::crypto::sign::Signature,
+  }
 ```
 Each `MpidMessage` instance only targets one recipient.  For multiple recipients, multiple `MpidMessage`s need to be created in the [Outbox][3] (see below).  This is to ensure spammers will run out of limited resources quickly.
 
@@ -170,18 +170,6 @@ We also have identified a need for some form of secure messaging in order to imp
 
 # Unresolved Questions
 
-1. `MpidMessage` and `MpidHeader` are wrapped in `StructuredData` instances in order to allow Delete requests on them and to allow them to be given different tags (otherwise they could be ImmutableData, since they don't mutate).  Should Routing, which already has to define these two types, be made "aware" of these two types?  (i.e. should they get added to the [`::routing::data::Data` enum][6])
-
-    Identified pros:
-    - less wrapping/parsing, so simpler for Vaults and Clients to deal with
-    - more efficient (smaller messages to transmit and store)
-    - no need for Routing to publicly expose `MPID_MESSAGE_TAG` or `MPID_HEADER_TAG`
-
-    Identified cons:
-    - increased complexity in Routing
-    - would need to add the sender's public key to the header Put flow
-
-    Qi prefers using `StructuredData`, Fraser prefers not using `StructuredData` unless the effort required by Routing to accommodate the new types is significant.
 
 # Future Work
 
@@ -203,72 +191,65 @@ We also have identified a need for some form of secure messaging in order to imp
 
 ### Further Implementation Details
 
-All MPID-related messages will be in the form of a Put, Post or Delete of a `StructuredData`.
+All MPID-related messages will be in the form of a Put, Get, Post or Delete of a `StructuredData`.
 
-This will be:
+Such `StructuredData` will be:
 
 ```rust
-
 StructuredData {
     type_tag: MPID_MESSAGE,
     identifier: mpid_message_name(mpid_message),  // or mpid_header_name(signed_header)
-    data: XXX,
+    data: ::util::encode(MpidMessageWrapper),
     previous_owner_keys: vec![],
     version: 0,
     current_owner_keys: vec![sender_public_key],
     previous_owner_signatures: vec![],
 }
-
 ```
 
-where XXX is indicated in the following list of all MPID-related messages:
-
-Sent from Client:
-
-| Message | From ==> To |
-|:---|:---|
-| Post[Online] |           Either Client    ==> Own Managers |
-| Put[Message] |           Sender Client    ==> Own Managers |
-| Post[Has[Vec<Header>]] | Sender Client    ==> Own Managers |
-| Post[GetAllHeaders] |    Sender Client    ==> Own Managers |
-| Delete[Header] |         Either Client    ==> Own Managers (try to delete from inbox and outbox) |
-| Delete[Header] |         Recipient Client ==> Sender's Managers |
-
-
-Sent from Vault:
-
-| Message | From ==> To |
-|:---|:---|
-| PutResponse[Error[Message]] |              Sender's Managers (outbox)   ==> Sender Client |
-| Put[Header] |                              Sender's Managers (outbox)   ==> Recipient's Managers (inbox) |
-| PutResponse[Error[Header]] |               Recipient's Managers (inbox) ==> Sender's Managers (outbox) |
-| Post[GetMessage[Header]] |                 Recipient's Managers (inbox) ==> Sender's Managers (outbox) |
-| PostResponse[Error[GetMessage[Header]]] |  Sender's Managers (outbox)   ==> Recipient's Managers (inbox) |
-| Post[Message] |                            Sender's Managers (outbox)   ==> Recipient's Managers (inbox) |
-| Post[Message] |                            Recipient's Managers (inbox) ==> Recipient Client |
-| Post[HasResponse[Vec<Header>]] |           Sender's Managers (outbox)   ==> Sender Client |
-| Post[GetAllHeadersResponse[Vec<Header>]] | Sender's Managers (outbox)   ==> Sender Client |
-
-
-The various different types for `StructuredData::data` can be enumerated as:
-
+where MpidMessageWrapper can be enumerated as:
 ```rust
 #[allow(variant_size_differences)]
 enum MpidMessageWrapper {
-    /// Notification that the MPID Client has just connected to the network
-    Online,
-    /// Try to retrieve the message corresponding to the included header
-    GetMessage(MpidHeader),
+    /// Send out a mpid_message
+    PutMessage(MpidMessage),
+    /// Notify with a mpid_header
+    PutHeader(MpidHeader),
     /// List of headers to check for continued existence of corresponding messages in Sender's outbox
-    Has(Vec<MpidHeader>),
-    /// Subset of list from Has request which still exist in Sender's outbox
+    OutboxHas(Vec<mpid_header.name()>),
+    /// Subset of list from Has request which still exist in Sender's outbox, all existing headers in inbox to respons GetAll
     HasResponse(Vec<MpidHeader>),
-    /// Retrieve the list of headers of all messages in Sender's outbox
-    GetAllHeaders,
-    /// The list of headers of all messages in Sender's outbox
-    GetAllHeadersResponse(Vec<MpidHeader>),
 }
 ```
+
+
+Requests composed by Client:
+
+| Request Type | Usage Scenario | content | Destination Authority |
+|:---|:---|:---|:---|
+| PUT    | client A send a msg       | MpidMessageWrapper::PutMessage | MpidManager(A) |
+| Get    | client B get a header     |        header_name             | MpidManager(B) |
+| Get    |      get a msg            |        message_name            | MpidManager(A) |
+| Get    | get all headers           |        A or B                  | MpidManager(A or B) |
+| Delete | client B remove a header  |        header_name             | MPidManager(B) |
+| Delete | client B remove a message |        message_name            | MPidManager(A) |
+| POST   | client A checks existence | MpidMessageWrapper::OutboxHas  | MPidManager(A) |
+
+Note: when a Get request is targeting an account, such account is registered as `online`.
+
+
+Requests composed by Vault:
+
+| Request Type | Usage Scenario | content | From Authority | Destination Authority |
+|:---|:---|:---|:---|:---|
+| PutResponse  | put failure (Outbox or Inbox Full) | Error[mpid_message]             | MPidManager(A) | Client(A) |
+| Put          | messaging notification             | MpidMessageWrapper::PutHeader   | MPidManager(A) | MPidManager(B) |
+| PutResponse  | Inbox full                         | Error[mpid_header]              | MPidManager(B) | MPidManager(A) |
+| Get          | fetching a message for push        | message_name                    | MPidManager(B) | MPidManager(A) |
+| PostResponse | requested msg not existing         | Error[GetMessage[name]]         | MPidManager(A) | MPidManager(B) |
+| Post         | replying the message for push      | MpidMessageWrapper::PutMessage  | MPidManager(A) | MPidManager(B) |
+| Post         | pushing a message to client        | MpidMessageWrapper::PutMessage  | MPidManager(B) | Client(B) |
+| Post         | replying existing headers          | MpidMessageWrapper::HasResponse | MPidManager    | Client    |
 
 
 MPID Header:
