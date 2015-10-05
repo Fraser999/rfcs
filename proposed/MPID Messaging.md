@@ -220,6 +220,8 @@ enum MpidMessageWrapper {
     /// All existing headers (or headers of existing messages) in inbox (or outbox) to respond a Get request targeting an account
     /// Or a subset of list from OutboxHas request which still exist in Sender's outbox, 
     HasResponse(Vec<MpidHeader>),
+    /// Register to be on-line
+    Online(mpid_name: NameType),
 }
 ```
 
@@ -229,14 +231,12 @@ Requests composed by Client:
 | Request Type | Usage Scenario | content | Destination Authority |
 |:---|:---|:---|:---|
 | PUT    | client A send a msg       | MpidMessageWrapper::PutMessage | MpidManager(A) |
-| Get    | client B get a header     |        header_name             | MpidManager(B) |
 | Get    |      get a msg            |        message_name            | MpidManager(A) |
-| Get    | get all headers           |        A or B                  | MpidManager(A or B) |
+| Get    | get all headers           |        A or B                  | MpidManager |
 | Delete | client B remove a header  |        header_name             | MPidManager(B) |
 | Delete | client B remove a message |        message_name            | MPidManager(A) |
 | POST   | client A checks existence | MpidMessageWrapper::OutboxHas  | MPidManager(A) |
-
-Note: when a Get request is targeting an account, such account is registered as `online`.
+| POST   | client register on-line   | MpidMessageWrapper::Online     | MPidManager |
 
 
 Requests composed by Vault:
